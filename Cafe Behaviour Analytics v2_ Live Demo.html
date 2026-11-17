@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cafe Behaviour Analytics v2: Live Demo</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f6f5f1;--card:#fff;--ink:#1f1f1c;--mute:#6b6a64;--line:#e2e0d8;--accent:#c2562b;--hi:#c0392b;--md:#b7791f;--lo:#2f855a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161614;--card:#211f1c;--ink:#efede6;--mute:#a09d93;--line:#37342f;--accent:#e8845a;--hi:#ef7b6e;--md:#e3b04b;--lo:#6fcf97}}
+:root[data-theme="dark"]{--bg:#161614;--card:#211f1c;--ink:#efede6;--mute:#a09d93;--line:#37342f;--accent:#e8845a;--hi:#ef7b6e;--md:#e3b04b;--lo:#6fcf97}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:14px}
+h1{font-size:20px;margin:0}h2{font-size:12px;margin:0 0 6px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.sub{color:var(--mute);margin:2px 0 12px;font-size:13px}.wrap{display:flex;flex-wrap:wrap;gap:12px;max-width:1300px;margin:0 auto}
+.left{flex:2 1 560px;min-width:0}.right{flex:1 1 360px;min-width:0;display:grid;gap:12px;align-content:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+canvas{width:100%;height:auto;display:block;border-radius:8px;background:#242422;cursor:pointer}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;font-size:13px}
+button,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;cursor:pointer}
+button.p{background:var(--accent);border-color:var(--accent);color:#fff}button.w{border-color:var(--hi);color:var(--hi)}
+table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{padding:3px 6px;text-align:right;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:600}.bar{height:8px;border-radius:4px;background:var(--accent);display:inline-block;vertical-align:middle}
+.k{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.k div{background:var(--bg);border-radius:8px;padding:5px 8px}.k b{display:block;font-size:19px}.k span{font-size:11px;color:var(--mute)}
+.al{border-left:4px solid var(--md);background:var(--bg);padding:5px 8px;margin:5px 0;border-radius:0 8px 8px 0;font-size:12.5px}.al.hi{border-color:var(--hi)}.al.ok{border-color:var(--lo)}
+.leg{font-size:12px;color:var(--mute);margin-top:6px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 3px 0 8px;vertical-align:middle}
+.note{font-size:12px;color:var(--mute);max-width:1300px;margin:12px auto 0}.g{color:var(--lo)}.r{color:var(--hi)}
+</style>
+</head>
+<body>
+<div style="max-width:1300px;margin:0 auto 10px"><h1>Cafe Behaviour Analytics v2: Live Demo</h1>
+<p class="sub">Simulated customers, tracked anonymously. Click any person to trace their journey. Try the surge button to see anomaly detection explain a sudden change.</p></div>
+<div class="wrap">
+<div class="left card">
+<canvas id="cv" width="960" height="540"></canvas>
+<div class="ctl"><button class="p" id="play">Pause</button>
+<label>Speed <select id="spd"><option>30</option><option selected>60</option><option>120</option><option>240</option></select>×</label>
+<button class="w" id="surge">Start college fest surge</button>
+<label><input type="checkbox" id="cal" checked> fest is in my events calendar</label>
+<span id="clock" style="margin-left:auto"></span></div>
+<div class="leg"><span class="dot" style="background:#34c759"></span>solo<span class="dot" style="background:#ff6bb5"></span>pair<span class="dot" style="background:#4aa3ff"></span>group 3+<span class="dot" style="background:#9a9a95"></span>staff · ring = opt-in loyalty member · white number above a person = seconds at the menu (red after 25 s)</div>
+</div>
+<div class="right">
+<div class="card"><h2>Selected party (journey)</h2><div id="sel"></div></div>
+<div class="card"><h2>Anomaly detection</h2><div id="anom"></div></div>
+<div class="card"><h2>Menu behaviour</h2><div id="menu"></div></div>
+<div class="card"><h2>Seating choice (count by party type)</h2><div id="seat"></div></div>
+<div class="card"><h2>Early exits (under 15 s, no order)</h2><div id="early"></div></div>
+<div class="card"><h2>Staff-customer behaviour</h2><div id="staff"></div></div>
+<div class="card"><h2>Repeat visits (opt-in loyalty IDs only)</h2><div id="rep"></div></div>
+</div></div>
+<p class="note">Everything here is simulated: people, paths and behaviours are generated with simple rules, so the numbers show how the system works, not how real customers behave. The real project works on anonymous tracks from video. It does not use faces, age estimation or biometric identity; repeat visits come only from loyalty IDs customers choose to give at the counter.</p>
+<script>
+const W=960,H=540,LY=480,STEP=.5,SPD=110,Z={menu:[560,425,900,478],queue:[560,200,900,420],disp:[560,60,900,200]};
+const A={corner1:{r:[40,60,180,150],t:'corner',c:2},corner2:{r:[40,310,180,400],t:'corner',c:2},window1:{r:[200,60,340,140],t:'window',c:4},window2:{r:[350,60,500,140],t:'window',c:4},center1:{r:[200,200,300,300],t:'center',c:4},center2:{r:[330,200,430,300],t:'center',c:4},bar:{r:[200,330,500,400],t:'bar',c:3}};
+const PREF={solo:{bar:.4,window:.3,center:.15,corner:.15},pair:{corner:.65,window:.2,center:.1,bar:.05},group:{window:.4,center:.5,corner:.05,bar:.05}};
+const COL={solo:'#34c759',pair:'#ff6bb5',group:'#4aa3ff'},HOME=[580,40],TYPES=['corner','window','center','bar'];
+const REASON={queue:'Long queue on arrival',seat:'No seat for the party',corner:'Pair: corner seats taken',none:'No visible cause'};
+const GUIDE={solo:'Quick and efficient; one light greeting; offer takeaway.',pair:'Warm but discreet; keep distance while seated; approach only to take the order or serve.',group:'Friendly and chatty; greet fast; suggest sharing platters or combos.'};
+const R=(a,b)=>a+Math.random()*(b-a),inR=(r,x,y)=>x>=r[0]&&x<r[2]&&y>=r[1]&&y<r[3],rn=()=>Math.sqrt(-2*Math.log(1-Math.random()))*Math.cos(6.283*Math.random());
+const med=a=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2},avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+const cv=document.getElementById('cv'),cx=cv.getContext('2d'),$=id=>document.getElementById(id);
+const pickW=w=>{let r=Math.random(),i=0;while(i<w.length-1&&r>w[i]){r-=w[i];i++}return i};
+let S,playing=true,acc=0,last=0,fr=0,sel=null;
+const clock=t=>{const m=540+Math.floor(t/60);return String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
+
+function init(){S={t:0,P:[],id:1,srv:0,qiv:[],busy:{},tasks:[],staff:{x:HOME[0],y:HOME[1],tk:null,arr:null},surge:false,
+ seatTab:{solo:{},pair:{},group:{}},menuDw:[],longB:0,walk:0,early:{queue:0,seat:0,corner:0,none:0},earlyN:0,entries:0,exits:0,alerts:[],
+ greet:{solo:[],pair:[],group:[]},nearS:{solo:[],pair:[],group:[]},win:{n:0,p:0,g:0,end:600},hist:[],anom:[],
+ mem:Array.from({length:14},(_,i)=>{const type=['solo','solo','pair','pair','group'][i%5];return{id:'L-'+String(101+i),type,seat:PREF[type]&&Object.keys(PREF[type])[pickW(Object.values(PREF[type]))],v:0,seats:{}}})};
+ for(const a in A)S.busy[a]=[];for(const g of['solo','pair','group'])for(const k of TYPES)S.seatTab[g][k]=0;}
+
+function walk(pts,t0){const ts=[t0],xs=[pts[0][0]],ys=[pts[0][1]];let t=t0;
+ for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];t+=Math.max(Math.hypot(b[0]-a[0],b[1]-a[1])/SPD,.1);ts.push(t);xs.push(b[0]);ys.push(b[1]);if(b[2]>0){t+=b[2];ts.push(t);xs.push(b[0]);ys.push(b[1])}}
+ return{ts,xs,ys,i:0}}
+
+function spawn(){const t0=S.t,m=Math.random()<.35?S.mem[Math.random()*S.mem.length|0]:null;
+ const gt=m?m.type:['solo','pair','group'][pickW(S.surge?[.15,.2,.65]:[.45,.3,.25])],n=gt==='solo'?1:gt==='pair'?2:3+(Math.random()<.4?1:0),dx=R(340,560);
+ const q=S.P.reduce((s,p)=>s+(p.inQ?p.n:0),0),free=(a,at)=>A[a].c-S.busy[a].filter(b=>b[0]<=at&&b[1]>at).reduce((s,b)=>s+b[2],0);
+ const fit=Object.keys(A).some(a=>free(a,t0+60)>=n),cfit=['corner1','corner2'].some(a=>free(a,t0+60)>=n);
+ let reason=null;if(q>=5&&Math.random()<.4)reason='queue';else if(!fit&&Math.random()<.4)reason='seat';else if(gt==='pair'&&fit&&!cfit&&Math.random()<.3)reason='corner';else if(Math.random()<.03)reason='none';
+ let pts=[[dx,535,0],[dx,440,0]],seat='',menu=0,walkout=false;
+ if(reason){if(Math.random()<.35){pts.push([R(600,700),R(445,470),R(4,6)])}else pts[1]=[dx,440,R(1.5,4)];pts.push([dx,440,0],[dx,535,0],[dx,580,0])}
+ else{const md={solo:10,pair:16,group:24}[gt]*(S.surge?.7:1)*(m?.5:1);menu=Math.exp(Math.log(md)+.45*rn())+(Math.random()<.12?R(30,60):0);
+  pts.push([R(620,860),R(448,472),menu]);
+  if(menu>45&&Math.random()<.3){walkout=true;pts.push([dx,440,0],[dx,535,0],[dx,580,0])}
+  else{const ahead=t0+22+menu,st=Math.max(ahead,S.srv),fin=st+R(20,40);S.srv=fin;S.qiv.push([ahead,fin]);const slot=S.qiv.filter(x=>x[0]<=ahead&&x[1]>ahead).length;
+   pts.push([Math.max(620,880-28*Math.min(slot,8))+R(-5,5),R(320,400),Math.max(fin-ahead,3)]);
+   if(Math.random()>={solo:.3,pair:.15,group:.05}[gt]*(S.surge?1.6:1)?0:1){}
+   const takeaway=Math.random()<({solo:.3,pair:.15,group:.05}[gt]*(S.surge?1.6:1)),ss=fin+12;
+   if(!takeaway){const opts={};for(const a in A)if(free(a,ss)>=n)(opts[A[a].t]=opts[A[a].t]||[]).push(a);const ty=Object.keys(opts);
+    if(ty.length){let tp;if(m&&opts[m.seat]&&Math.random()<.85)tp=m.seat;else{const w=ty.map(k=>PREF[gt][k]),s=w.reduce((x,y)=>x+y,0);tp=ty[pickW(w.map(x=>x/s))]}
+     seat=opts[tp][0];const c=A[seat].r,dw={solo:R(300,600),pair:R(500,900),group:R(600,1000)}[gt];pts.push([(c[0]+c[2])/2,(c[1]+c[3])/2,dw]);S.busy[seat].push([ss,ss+dw,n]);
+     const cx0=(c[0]+c[2])/2+55,cy0=(c[1]+c[3])/2+25;
+     if(gt==='pair'&&Math.random()<.6)for(let k=0;k<3;k++)S.tasks.push({t:ss+60+k*R(70,120),x:cx0,y:cy0,h:R(20,30)});else S.tasks.push({t:ss+R(40,100),x:cx0,y:cy0,h:20})}}
+   pts.push([dx,440,0],[dx,535,0],[dx,580,0])}}
+ if(Math.random()<{solo:.4,pair:.5,group:.8}[gt])S.tasks.push({t:t0+R(2,14),x:dx+70,y:420,h:4});
+ const p={...walk(pts,t0),id:S.id++,gt,n,m,t0,x:dx,y:535,py:535,tr:[],last:0,menuS:0,qS:0,ordered:false,inQ:false,qd:false,seat:'',seatT:0,seatLogged:false,near:0,greet:null,reason,walkout,enter:null,alert:false,logged:false,tm:null};
+ S.P.push(p);sel=p;S.win.p++;if(gt==='group')S.win.g++}
+
+function step(){const t=S.t,dt=STEP,s=S.staff;
+ if(Math.random()<dt/75*(S.surge?2.6:1))spawn();
+ // staff agent
+ if(!s.tk){const due=S.tasks.filter(k=>k.t<=t).sort((a,b)=>a.t-b.t)[0];if(due){S.tasks.splice(S.tasks.indexOf(due),1);if(t-due.t<50){s.tk=due;s.arr=null}}}
+ const tg=s.tk?[s.tk.x,s.tk.y]:HOME,d=Math.hypot(tg[0]-s.x,tg[1]-s.y);
+ if(d>3){const f=Math.min(1,130*dt/d);s.x+=(tg[0]-s.x)*f;s.y+=(tg[1]-s.y)*f}else if(s.tk){if(s.arr==null)s.arr=t;if(t-s.arr>=s.tk.h)s.tk=null}
+ for(let k=S.P.length-1;k>=0;k--){const p=S.P[k],n=p.ts.length;
+  while(p.i<n-2&&t>p.ts[p.i+1])p.i++;
+  const f=Math.min(1,Math.max(0,(t-p.ts[p.i])/(p.ts[p.i+1]-p.ts[p.i])));p.py=p.y;p.x=p.xs[p.i]+f*(p.xs[p.i+1]-p.xs[p.i]);p.y=p.ys[p.i]+f*(p.ys[p.i+1]-p.ys[p.i]);
+  if(t-p.last>=1){p.tr.push([p.x,p.y]);p.last=t}
+  if(p.py>LY&&p.y<=LY&&p.enter==null){p.enter=t;S.entries+=p.n}
+  if(p.py<=LY&&p.y>LY&&p.enter!=null&&!p.logged){p.logged=true;S.exits+=p.n;
+   if(t-p.enter<15&&!p.ordered){S.earlyN++;S.early[p.reason||'none']++}else if(!p.ordered&&p.walkout)S.walk++}
+  const inQ=inR(Z.queue,p.x,p.y);p.inQ=inQ;
+  if(inQ){p.qd=true;p.qS+=dt;if(!p.ordered&&p.qS>=2){p.ordered=true;S.menuDw.push(p.menuS);if(p.menuS>25)S.longB++;if(p.m){p.m.v++}}}
+  else if(inR(Z.menu,p.x,p.y)&&!p.qd)p.menuS+=dt;
+  for(const a in A)if(inR(A[a].r,p.x,p.y)){p.seat=a;p.seatT+=dt;if(!p.seatLogged&&p.seatT>=30){p.seatLogged=true;S.seatTab[p.gt][A[a].t]++;if(p.m)p.m.seats[A[a].t]=(p.m.seats[A[a].t]||0)+1}break}
+  const ds=Math.hypot(s.x-p.x,s.y-p.y);
+  if(ds<200&&p.greet==null&&p.enter!=null){p.greet=t-p.enter;S.greet[p.gt].push(p.greet)}
+  if(ds<120&&p.seatT>0&&inR(A[p.seat||'bar'].r,p.x,p.y)){p.near+=dt;
+   if(p.gt==='pair'&&p.near>30&&!p.alert){p.alert=true;S.alerts.unshift(`${clock(t)} Staff close to a pair in a ${A[p.seat].t} seat for ${p.near|0}s. Step back; serve only at ordering and delivery.`);S.alerts.length=Math.min(S.alerts.length,4)}}
+  if(t>p.ts[n-1]){if(p.seatLogged)S.nearS[p.gt].push(p.near);S.P.splice(k,1)}}
+ // 10-minute window for anomaly detection
+ if(t>=S.win.end){const w=S.win,cnt=w.p,gs=w.p?w.g/w.p:0,h=S.hist.filter(x=>!x.f).slice(-8);let msg=null;
+  if(h.length>=4){const m=med(h.map(x=>x.c)),mad=med(h.map(x=>Math.abs(x.c-m))),sc=Math.max(1.4826*mad,.2*m,2),z=(cnt-m)/sc,gm=med(h.map(x=>x.g));
+   if(z>=3&&gs-gm>=.15){msg={t:clock(w.end-600)+'–'+clock(w.end),cnt,m,z,gs,gm,cal:S.surgeCal};}}
+  S.hist.push({c:cnt,g:gs,f:!!msg});if(msg)S.anom.unshift(msg);S.win={n:0,p:0,g:0,end:w.end+600}}
+ S.t+=dt}
+
+function draw(){cx.fillStyle='#2a2a27';cx.fillRect(0,0,W,H);cx.font='12px system-ui,sans-serif';cx.lineWidth=1;
+ for(const a in A){const r=A[a].r,occ=S.P.filter(p=>p.seat===a&&inR(r,p.x,p.y)).reduce((x,p)=>x+p.n,0);cx.strokeStyle=occ?'#e0b050':'#777';cx.strokeRect(r[0]+.5,r[1]+.5,r[2]-r[0],r[3]-r[1]);cx.fillStyle='#aaa';cx.fillText(A[a].t+` ${occ}/${A[a].c}`,r[0]+5,r[1]+14)}
+ for(const[k,l]of[['menu','menu board'],['queue','counter queue'],['disp','pastry display']]){const r=Z[k];cx.strokeStyle=k==='menu'?'#ffb020':'#ccc';cx.strokeRect(r[0]+.5,r[1]+.5,r[2]-r[0],r[3]-r[1]);cx.fillStyle=k==='menu'?'#ffb020':'#ccc';cx.fillText(l,r[0]+5,r[1]+14)}
+ cx.strokeStyle='#ffd400';cx.lineWidth=3;cx.beginPath();cx.moveTo(300,LY);cx.lineTo(660,LY);cx.stroke();cx.fillStyle='#ffd400';cx.fillText('door',304,LY+16);
+ if(sel&&sel.tr.length>1){cx.strokeStyle='#fff';cx.lineWidth=2;cx.beginPath();sel.tr.forEach(([x,y],i)=>i?cx.lineTo(x,y):cx.moveTo(x,y));cx.lineTo(sel.x,sel.y);cx.stroke()}
+ cx.fillStyle='#9a9a95';for(const[x,y]of[[720+100*Math.sin(S.t/40),30],[S.staff.x,S.staff.y]]){cx.beginPath();cx.arc(x,y,8,0,7);cx.fill()}
+ for(const p of S.P){for(let k=0;k<p.n;k++){const ox=(k-(p.n-1)/2)*24,oy=p.n>1?(k%2)*6:0;cx.fillStyle=COL[p.gt];cx.beginPath();cx.arc(p.x+ox,p.y+oy,7,0,7);cx.fill();
+   if(p.m){cx.strokeStyle='#fff';cx.lineWidth=1.5;cx.beginPath();cx.arc(p.x+ox,p.y+oy,10,0,7);cx.stroke()}}
+  if(inR(Z.menu,p.x,p.y)&&!p.qd){cx.fillStyle=p.menuS>25?'#ff6b5e':'#fff';cx.font='bold 13px system-ui,sans-serif';cx.fillText(p.menuS|0,p.x-5,p.y-14);cx.font='12px system-ui,sans-serif'}
+  if(p===sel){cx.strokeStyle='#fff';cx.lineWidth=2;cx.beginPath();cx.arc(p.x,p.y,18+p.n*3,0,7);cx.stroke()}}
+ const q=S.P.reduce((s,p)=>s+(p.inQ?p.n:0),0);cx.fillStyle='rgba(0,0,0,.6)';cx.fillRect(0,H-26,W,26);cx.fillStyle='#fff';cx.font='bold 14px system-ui,sans-serif';
+ cx.fillText(`IN ${S.entries}   OUT ${S.exits}   inside ${S.P.filter(p=>p.enter!=null&&!p.logged).reduce((s,p)=>s+p.n,0)}   queue ${q}`,10,H-8);cx.font='12px system-ui,sans-serif'}
+
+const row=(a,b)=>`<tr><td>${a}</td><td>${b}</td></tr>`;
+function panels(){const p=sel,t=S.t;
+ $('clock').textContent='Cafe time '+clock(t)+(S.surge?' · FEST SURGE ON':'');
+ if(p){const stay=(p.enter!=null?Math.min(t,p.ts[p.ts.length-1])-p.enter:0);
+  $('sel').innerHTML=`<div class="k"><div><b>${p.n}</b><span>${p.gt==='group'?'group 3+':p.gt}</span></div><div><b>${p.menuS|0}s</b><span>at menu</span></div><div><b>${p.seat?A[p.seat].t:'–'}</b><span>seat</span></div><div><b>${(stay/60).toFixed(1)}m</b><span>in shop</span></div></div>
+  <div class="leg">${p.m?'Loyalty member '+p.m.id+' · ':'Anonymous · '}staff close while seated: ${p.near|0}s · greeted after ${p.greet==null?'–':p.greet.toFixed(0)+'s'}${p.reason?' · leaving early: '+REASON[p.reason]:''}${p.walkout?' · left after long menu browse':''}</div>
+  <div class="al ok"><b>Staff advice:</b> ${GUIDE[p.gt]}${p.gt==='pair'&&p.seat&&A[p.seat].t==='corner'?' They chose a corner: treat as wanting privacy.':''}</div>`}
+ const an=S.anom[0],h=S.hist.length;
+ $('anom').innerHTML=an?`<div class="al hi"><b>Anomaly ${an.t}:</b> ${an.cnt} arrivals vs usual ${an.m.toFixed(0)} (z=${an.z.toFixed(1)}), groups ${Math.round(an.gs*100)}% vs usual ${Math.round(an.gm*100)}%.<br><b>Pattern:</b> crowd surge driven by groups.<br><b>${an.cal?'Explained by calendar: College fest.':'Unexplained: not in your calendar. Check events, weather, competitors, social posts.'}</b></div>
+  <div class="al ok"><b>Suggested actions:</b> stock up best-sellers and add counter staff; offer group combos and a short event menu; use a pre-order QR; run an after-event loyalty offer.</div>`:`<div class="al ok">${h<4?'Learning the normal pattern ('+h+'/4 windows)…':'Pattern normal.'} Press the surge button to simulate a sudden change.</div>`;
+ const sh=S.menuDw.length;$('menu').innerHTML=`<table>${row('Average time at menu',avg(S.menuDw).toFixed(0)+' s')}${row('Browsed longer than 25 s',sh?Math.round(100*S.longB/sh)+'%':'–')}${row('Left after long browse (no order)',S.walk)}</table>
+  <div class="leg">${sh&&S.longB/sh>.25?'<span class="r">Many long browses: menu may be confusing or prices/availability are an issue.</span>':'<span class="g">Reading time looks healthy.</span>'}</div>`;
+ let hd='<tr><th></th>'+TYPES.map(k=>`<th>${k}</th>`).join('')+'</tr>';for(const g of['solo','pair','group']){const r=S.seatTab[g],mx=Math.max(...TYPES.map(k=>r[k]));hd+=`<tr><td>${g}</td>`+TYPES.map(k=>`<td ${r[k]&&r[k]===mx?'style="font-weight:700;color:var(--accent)"':''}>${r[k]}</td>`).join('')+'</tr>'}
+ $('seat').innerHTML=`<table>${hd}</table><div class="leg">Pairs tend to choose corners (privacy); groups choose window/centre; solo people choose the bar.</div>`;
+ const tot=S.earlyN||1;$('early').innerHTML=`<table>${Object.keys(REASON).map(k=>`<tr><td>${REASON[k]}</td><td><span class="bar" style="width:${80*S.early[k]/tot}px"></span> ${S.early[k]}</td></tr>`).join('')}</table><div class="leg">Reasons are inferred from the situation on arrival; confirm with an exit QR survey. A camera cannot see cleanliness, smell, noise or how safe someone felt.</div>`;
+ const stRow=g=>`<tr><td>${g}</td><td>${S.greet[g].length?avg(S.greet[g]).toFixed(0)+' s':'–'}</td><td ${g==='pair'&&avg(S.nearS.pair)>30?'class="r"':''}>${S.nearS[g].length?avg(S.nearS[g]).toFixed(0)+' s':'–'}</td></tr>`;
+ $('staff').innerHTML=`<table><tr><th>party</th><th>greeting wait</th><th>staff close while seated</th></tr>${stRow('solo')}${stRow('pair')}${stRow('group')}</table><div class="leg">Guideline for pairs: under 30 s close to the table.</div>${S.alerts.map(a=>`<div class="al">${a}</div>`).join('')}`;
+ const ms=[...S.mem].filter(m=>m.v).sort((a,b)=>b.v-a.v).slice(0,5);
+ $('rep').innerHTML=ms.length?`<table><tr><th>member</th><th>visits</th><th>usual seat</th><th>segment</th></tr>${ms.map(m=>{const us=Object.keys(m.seats).sort((a,b)=>m.seats[b]-m.seats[a])[0]||'–';return`<tr><td>${m.id}</td><td>${m.v}</td><td>${us}</td><td>${m.v>=4?'regular':m.v>1?'returning':'new'}</td></tr>`}).join('')}</table><div class="leg">Only customers who give a loyalty ID are linked across visits.</div>`:'<div class="leg">No loyalty visits yet.</div>'}
+
+function loop(ts){const d=Math.min(.1,(ts-last)/1000||0);last=ts;
+ if(playing){acc+=d*(+$('spd').value)/STEP;let n=Math.floor(acc);acc-=n;n=Math.min(n,500);while(n--)step()}
+ draw();if(fr++%12===0)panels();requestAnimationFrame(loop)}
+cv.onclick=e=>{const b=cv.getBoundingClientRect(),x=(e.clientX-b.left)*W/b.width,y=(e.clientY-b.top)*H/b.height;let best=null,bd=40;for(const p of S.P){const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=p}}if(best){sel=best;panels()}};
+$('play').onclick=e=>{playing=!playing;e.target.textContent=playing?'Pause':'Play'};
+$('surge').onclick=e=>{S.surge=!S.surge;S.surgeCal=$('cal').checked;e.target.textContent=S.surge?'End surge':'Start college fest surge'};
+init();for(let i=0;i<10800;i++)step();sel=S.P[S.P.length-1]||null;requestAnimationFrame(loop);
+</script>
+</body>
+</html>
